@@ -5,7 +5,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DOMAIN="${DOMAIN:-duakelinci.webbros.my.id}"
+# Port precedence: command line (APP_PORT=8506 bash ...) > .env > 8501
+if [ -z "${APP_PORT:-}" ] && [ -f .env ]; then
+  APP_PORT="$(grep -E '^APP_PORT=' .env | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
+fi
 APP_PORT="${APP_PORT:-8501}"
+echo ">> Using APP_PORT=$APP_PORT"
 
 # 1. Docker
 if ! command -v docker >/dev/null; then
