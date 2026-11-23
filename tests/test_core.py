@@ -47,3 +47,20 @@ def test_fmt_idr():
     assert fmt_idr(495_827_800) == "Rp 495,8 jt"
     assert fmt_idr(594_000) == "Rp 594.000"
     assert fmt_idr(-528_000) == "-Rp 528.000"
+
+
+def test_recipients_roundtrip(tmp_path, monkeypatch):
+    from salesapp import notify
+    monkeypatch.setenv("RECIPIENTS_PATH", str(tmp_path / "r.json"))
+    monkeypatch.setenv("WA_TO", "0812-3456-7890")
+    assert notify.load_recipients() == [{"name": "", "number": "6281234567890", "active": True}]
+    saved = notify.save_recipients([
+        {"name": "Andi", "number": "+62 812 3456 7890", "active": True},
+        {"name": "dup", "number": "081234567890", "active": True},       # same number -> dropped
+        {"name": "Grup", "number": "120363012345678901@g.us", "active": False},
+        {"name": "", "number": "", "active": True},                       # empty row -> ignored
+    ])
+    assert [r["number"] for r in saved] == ["6281234567890", "120363012345678901@g.us"]
+    assert notify.active_wa_recipients() == ["6281234567890"]
+    with pytest.raises(ValueError):
+        notify.save_recipients([{"name": "x", "number": "12", "active": True}])

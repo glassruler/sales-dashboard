@@ -3,8 +3,10 @@
 //   GET  /qr.png   -> QR to link the device (only while not connected)
 //   GET  /groups   -> [{ id, subject }]  (find a group JID for WA_TO)
 //   POST /send     -> { to: "62812..." | "0812..." | "<id>@g.us", text }
+//   POST /logout   -> unlink this number; a new QR appears for another phone
 // Every request needs "Authorization: Bearer $WA_GATEWAY_TOKEN".
 import fs from 'node:fs'
+import path from 'node:path'
 import express from 'express'
 import pino from 'pino'
 import QRCode from 'qrcode'
@@ -24,10 +26,31 @@ let state = 'starting'
 let lastQr = null
 let me = null
 
+// Never let one bad event kill the gateway (Docker would restart-loop it).
+process.on('uncaughtException', e => logger.error(e, 'uncaughtException'))
+process.on('unhandledRejection', e => logger.error(e, 'unhandledRejection'))
+
+// AUTH_DIR is a Docker volume mount point: it cannot be removed itself, only emptied.
+function clearAuth () {
+  try {
+    fs.mkdirSync(AUTH_DIR, { recursive: true })
+    for (const f of fs.readdirSync(AUTH_DIR)) {
+      fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true })
+    }
+    logger.warn('Sesi WhatsApp dihapus')
+  } catch (e) {
+    logger.error(e, 'gagal menghapus sesi')
+  }
+}
+
+function scheduleStart (ms = 3000) {
+  setTimeout(() => start().catch(e => { logger.error(e, 'start failed'); scheduleStart(10000) }), ms)
+}
+
 async function start () {
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }))
-  sock = makeWASocket({
+  const s = makeWASocket({
     auth,
     version,
     logger: logger.child({ mod: 'baileys' }, { level: 'warn' }),
@@ -35,8 +58,11 @@ async function start () {
     markOnlineOnConnect: false,
     syncFullHistory: false,
   })
-  sock.ev.on('creds.update', saveCreds)
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  sock = s
+  state = 'starting'
+  s.ev.on('creds.update', saveCreds)
+  s.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    if (s !== sock) return // events from an old socket after a restart
     if (qr) {
       lastQr = qr
       state = 'waiting_for_qr_scan'
@@ -45,18 +71,20 @@ async function start () {
     if (connection === 'open') {
       state = 'connected'
       lastQr = null
-      me = sock.user?.id || null
+      me = s.user?.id || null
       logger.info({ me }, 'WhatsApp tersambung')
     }
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode
       me = null
+      lastQr = null
       if (code === DisconnectReason.loggedOut) {
-        logger.warn('Perangkat di-logout: hapus sesi, minta QR baru')
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true })
+        logger.warn('Perangkat di-logout (dari HP atau tombol Ganti nomor): minta QR baru')
+        clearAuth()
       }
       state = 'reconnecting'
-      setTimeout(() => start().catch(e => logger.error(e)), 3000)
+      sock = null
+      scheduleStart(code === DisconnectReason.loggedOut ? 1000 : 3000)
     }
   })
 }
@@ -88,8 +116,34 @@ app.get('/qr.png', async (_req, res) => {
 
 app.get('/groups', async (_req, res) => {
   if (state !== 'connected') return res.status(503).json({ error: 'belum tersambung', state })
-  const groups = await sock.groupFetchAllParticipating()
-  res.json(Object.values(groups).map(g => ({ id: g.id, subject: g.subject })))
+  try {
+    const groups = await sock.groupFetchAllParticipating()
+    res.json(Object.values(groups).map(g => ({ id: g.id, subject: g.subject })))
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+app.post('/logout', async (_req, res) => {
+  const s = sock
+  try {
+    // Normal path: WhatsApp confirms, the 'close' handler clears the session and restarts.
+    if (s && state === 'connected') await s.logout()
+    else throw new Error('not connected')
+  } catch (e) {
+    // Not connected / logout refused: clear the session ourselves and restart for a fresh QR.
+    logger.warn({ err: String(e.message || e) }, 'logout fallback')
+    clearAuth()
+    if (s && s === sock) {
+      sock = null
+      try { s.end(undefined) } catch {}
+    }
+    state = 'reconnecting'
+    me = null
+    lastQr = null
+    scheduleStart(1000)
+  }
+  res.json({ ok: true, state: 'reconnecting' })
 })
 
 app.post('/send', async (req, res) => {
@@ -111,4 +165,4 @@ app.post('/send', async (req, res) => {
 })
 
 app.listen(PORT, () => logger.info(`wa-gateway di port ${PORT}`))
-start().catch(e => { logger.error(e); process.exit(1) })
+scheduleStart(0)

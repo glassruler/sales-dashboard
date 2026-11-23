@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -166,6 +167,76 @@ def heatmap(m: pd.DataFrame) -> go.Figure:
     return fig
 
 
+# --------------------------------------------------------------------------- whatsapp
+def wa_section() -> None:
+    """Linked sender (QR / switch number) and the editable recipient list."""
+    if not os.getenv("WA_GATEWAY_URL"):
+        return
+    st.markdown("**WhatsApp pengirim**")
+    stt = notify.whatsapp_status()
+    if stt.get("connected"):
+        me = str(stt.get("me") or "").split(":")[0].split("@")[0]
+        st.success(f"Tersambung sebagai +{me}")
+        with st.popover("Ganti nomor pengirim"):
+            st.write("Nomor ini akan diputus. Setelah itu QR baru muncul untuk HP lain.")
+            if st.button("Ya, putuskan", type="primary"):
+                try:
+                    notify.whatsapp_logout()
+                    st.toast("Diputus. Tunggu QR baru...")
+                except Exception as e:
+                    st.error(f"Gagal: {e}")
+                time.sleep(4)
+                st.rerun()
+    else:
+        st.warning(f"Belum tersambung: {stt.get('error') or stt.get('state', '')}")
+        qr = notify.whatsapp_qr_png()
+        if qr:
+            st.image(qr, caption="Scan dari HP pengirim: WhatsApp > Perangkat tertaut > Tautkan perangkat",
+                     width=260)
+            st.caption("QR berganti tiap ~20 detik. Kalau gagal, klik Cek lagi.")
+        elif stt.get("state") in ("reconnecting", "starting"):
+            st.caption("Menyiapkan QR baru, tunggu beberapa detik lalu klik Cek lagi.")
+        if st.button("Cek lagi"):
+            st.rerun()
+
+    st.markdown("**Penerima WhatsApp**")
+    st.caption("Nomor 08xx / 62xx, atau id grup (...@g.us). Centang *Aktif* untuk ikut menerima, "
+               "termasuk kiriman otomatis terjadwal.")
+    rows = pd.DataFrame(notify.load_recipients(), columns=["name", "number", "active"])
+    edited = st.data_editor(
+        rows, num_rows="dynamic", hide_index=True, width="stretch", key="wa_recipients",
+        column_config={
+            "name": st.column_config.TextColumn("Nama"),
+            "number": st.column_config.TextColumn("Nomor / id grup", required=True),
+            "active": st.column_config.CheckboxColumn("Aktif", default=True),
+        },
+    )
+    c1, c2 = st.columns([1, 1])
+    if c1.button("💾 Simpan penerima", width="stretch"):
+        try:
+            recs = edited.fillna({"name": "", "active": True}).to_dict("records")
+            saved = notify.save_recipients(recs)
+            st.success(f"Disimpan: {sum(r['active'] for r in saved)} aktif dari {len(saved)}.")
+            time.sleep(1)
+            st.rerun()
+        except ValueError as e:
+            st.error(f"Belum disimpan, perbaiki dulu: {e}")
+    if stt.get("connected") and c2.button("Lihat grup WhatsApp", width="stretch"):
+        try:
+            import requests
+            r = requests.get(f"{os.getenv('WA_GATEWAY_URL').rstrip('/')}/groups",
+                             headers={"Authorization": f"Bearer {os.getenv('WA_GATEWAY_TOKEN', '')}"},
+                             timeout=20)
+            groups = r.json()
+            if groups:
+                st.dataframe(pd.DataFrame(groups).rename(columns={"subject": "Grup", "id": "Id (salin ke Nomor)"}),
+                             hide_index=True, width="stretch")
+            else:
+                st.info("Nomor pengirim belum ada di grup mana pun.")
+        except Exception as e:
+            st.error(f"Gagal mengambil grup: {e}")
+
+
 # --------------------------------------------------------------------------- page
 months = sorted(df.month.unique())
 k = kpis(df)
@@ -265,21 +336,14 @@ with t3:
             st.caption("Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di .env")
     with b:
         stt = notify.whatsapp_status() if os.getenv("WA_GATEWAY_URL") else {"connected": False}
-        wa_ok = notify.whatsapp_configured() and stt.get("connected")
-        if st.button("Kirim ke WhatsApp", disabled=not wa_ok, width="stretch"):
-            st.write(send(msg, ["whatsapp"]))
-        # Linking the phone (QR) must not depend on WA_TO: you link first, choose recipients after.
-        if os.getenv("WA_GATEWAY_URL") and not stt.get("connected"):
-            st.caption(f"WhatsApp belum tersambung: {stt.get('error') or stt.get('state', '')}")
-            qr = notify.whatsapp_qr_png()
-            if qr:
-                st.image(qr, caption="Scan di WhatsApp > Perangkat tertaut", width=260)
-            if st.button("Cek lagi"):
-                st.rerun()
-        elif stt.get("connected"):
-            st.caption(f"Tersambung sebagai {str(stt.get('me') or '').split(':')[0].split('@')[0]}")
-        if not os.getenv("WA_TO", "").strip():
-            st.caption("Isi WA_TO di .env (nomor 08xx / 62xx atau id grup ...@g.us) untuk penerima.")
+        n_active = len(notify.active_wa_recipients())
+        wa_ok = bool(stt.get("connected")) and n_active > 0
+        if st.button(f"Kirim ke WhatsApp ({n_active} penerima)", disabled=not wa_ok, width="stretch"):
+            with st.spinner("Mengirim..."):
+                st.write(send(msg, ["whatsapp"]))
+        if stt.get("connected") and not n_active:
+            st.caption("Tambahkan penerima di bagian **Penerima WhatsApp** di bawah.")
+    wa_section()
     cron = os.getenv("REPORT_CRON", "0 8 * * 1")
     st.caption(f"Kirim otomatis: jadwal cron `{cron}` (WIB) ke {os.getenv('REPORT_CHANNELS', 'telegram,whatsapp')}. "
                "Pengiriman otomatis selalu memakai seluruh data, bukan filter di layar.")
