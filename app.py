@@ -268,15 +268,18 @@ with t3:
         wa_ok = notify.whatsapp_configured() and stt.get("connected")
         if st.button("Kirim ke WhatsApp", disabled=not wa_ok, width="stretch"):
             st.write(send(msg, ["whatsapp"]))
-        if not notify.whatsapp_configured():
-            st.caption("Isi WA_GATEWAY_URL dan WA_TO di .env")
-        elif not stt.get("connected"):
+        # Linking the phone (QR) must not depend on WA_TO: you link first, choose recipients after.
+        if os.getenv("WA_GATEWAY_URL") and not stt.get("connected"):
             st.caption(f"WhatsApp belum tersambung: {stt.get('error') or stt.get('state', '')}")
             qr = notify.whatsapp_qr_png()
             if qr:
                 st.image(qr, caption="Scan di WhatsApp > Perangkat tertaut", width=260)
-                if st.button("Cek lagi"):
-                    st.rerun()
+            if st.button("Cek lagi"):
+                st.rerun()
+        elif stt.get("connected"):
+            st.caption(f"Tersambung sebagai {str(stt.get('me') or '').split(':')[0].split('@')[0]}")
+        if not os.getenv("WA_TO", "").strip():
+            st.caption("Isi WA_TO di .env (nomor 08xx / 62xx atau id grup ...@g.us) untuk penerima.")
     cron = os.getenv("REPORT_CRON", "0 8 * * 1")
     st.caption(f"Kirim otomatis: jadwal cron `{cron}` (WIB) ke {os.getenv('REPORT_CHANNELS', 'telegram,whatsapp')}. "
                "Pengiriman otomatis selalu memakai seluruh data, bukan filter di layar.")
