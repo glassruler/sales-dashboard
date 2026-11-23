@@ -78,6 +78,8 @@ Services: `app` (Streamlit), `scheduler`, `wa` (Baileys, not exposed), `caddy` (
 
 Update later: `bash deploy/update.sh`. Logs: `docker compose logs -f`.
 
+**Server already running Nginx** (the default now): the app listens on `127.0.0.1:8501` only, `deploy/setup-vps.sh` installs `deploy/nginx-duakelinci.conf`, then run `certbot --nginx -d duakelinci.webbros.my.id`. On a bare server with no web server, use Caddy instead: `docker compose --profile caddy up -d`.
+
 ### WhatsApp caveat
 Baileys is an unofficial WhatsApp Web client. Use a **dedicated number**, keep volume low
 (a few messages a week is fine), and expect to re-scan the QR if WhatsApp logs the device out.

@@ -4,6 +4,9 @@ services:
     env_file: .env
     environment:
       WA_GATEWAY_URL: http://wa:3000
+    ports:
+      # Only reachable from the server itself; Nginx (or Caddy) proxies the domain to it.
+      - "127.0.0.1:${APP_PORT:-8501}:8501"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -29,8 +32,11 @@ services:
     restart: unless-stopped
     # not published: only reachable by app/scheduler on the internal network
 
+  # Optional: only for a server WITHOUT its own web server.
+  # Start with: docker compose --profile caddy up -d
   caddy:
     image: caddy:2.10
+    profiles: ["caddy"]
     ports: ["80:80", "443:443"]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
