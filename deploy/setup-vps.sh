@@ -37,7 +37,8 @@ if ss -ltn | grep -q ":$APP_PORT "; then
   fi
 fi
 
-# 4. Start app + scheduler + WhatsApp gateway
+# 4. Start app + scheduler + WhatsApp gateway (the app runs as uid 1000 and writes to data/)
+mkdir -p data && chown -R 1000:1000 data
 docker compose up -d --build
 docker compose ps
 

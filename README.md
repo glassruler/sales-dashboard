@@ -76,7 +76,7 @@ Services: `app` (Streamlit), `scheduler`, `wa` (Baileys, not exposed), `caddy` (
 4. Open the site → "Ringkasan & Kirim" → scan the WhatsApp QR once
    (WhatsApp → Linked devices). The session is kept in the `wa_auth` volume.
 
-Update later: `bash deploy/update.sh`. Logs: `docker compose logs -f`.
+Update later: upload the new archive to `/tmp`, then `sudo bash /opt/sales-dashboard/deploy/install-update.sh` (keeps `.env`, `data/` and the WhatsApp session, and fixes `data/` ownership). Logs: `docker compose logs -f`.
 
 **Server already running Nginx** (the default now): the app listens on `127.0.0.1:8501` only, `deploy/setup-vps.sh` installs `deploy/nginx-duakelinci.conf`, then run `certbot --nginx -d duakelinci.webbros.my.id`. On a bare server with no web server, use Caddy instead: `docker compose --profile caddy up -d`.
 

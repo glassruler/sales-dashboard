@@ -85,6 +85,9 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.success(f"{rep.clean_rows} baris dimuat.")
                 st.rerun()
+            except PermissionError:
+                st.error("Folder data tidak bisa ditulis. Di server: "
+                         "`sudo chown -R 1000:1000 /opt/sales-dashboard/data`")
             except Exception as e:
                 st.error(f"File tidak valid: {e}")
 
@@ -221,6 +224,9 @@ def wa_section() -> None:
             st.rerun()
         except ValueError as e:
             st.error(f"Belum disimpan, perbaiki dulu: {e}")
+        except PermissionError:
+            st.error("Folder data tidak bisa ditulis oleh aplikasi. Jalankan di server: "
+                     "`sudo chown -R 1000:1000 /opt/sales-dashboard/data`")
     if stt.get("connected") and c2.button("Lihat grup WhatsApp", width="stretch"):
         try:
             import requests
