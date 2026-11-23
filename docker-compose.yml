@@ -1,0 +1,47 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      WA_GATEWAY_URL: http://wa:3000
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on: [wa]
+
+  scheduler:
+    build: .
+    command: ["python", "-m", "salesapp.scheduler"]
+    env_file: .env
+    environment:
+      WA_GATEWAY_URL: http://wa:3000
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on: [wa]
+
+  wa:
+    build: ./wa-gateway
+    environment:
+      WA_GATEWAY_TOKEN: ${WA_GATEWAY_TOKEN}
+    volumes:
+      - wa_auth:/app/auth   # WhatsApp session: survives restarts, scan QR once
+    restart: unless-stopped
+    # not published: only reachable by app/scheduler on the internal network
+
+  caddy:
+    image: caddy:2.10
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on: [app]
+
+volumes:
+  wa_auth:
+  caddy_data:
+  caddy_config:
