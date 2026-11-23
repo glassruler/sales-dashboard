@@ -5,3 +5,4 @@ __pycache__/
 node_modules/
 wa-gateway/auth/
 .venv/
+application/
