@@ -1,5 +1,31 @@
 # Dashboard Penjualan
 
+## Run it in 2 minutes
+
+Needs Python 3.11+. No API keys, database or Docker required.
+
+```powershell
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Then open http://localhost:8501 in your browser. The sample data is already in `data/sales.csv`; to use your own
+copy instead, put it in this folder as `sales.csv` (and delete `data/sales.csv`), or upload it from the sidebar.
+
+What to look at:
+- **Region & Brand**: net sales per region and brand, October vs September change, region × brand heatmap
+- **⚠️ 5 Outlet Terlemah**: the 5 weakest outlets and why each was flagged
+- **📝 Ringkasan & Kirim**: the one-paragraph summary for a sales manager, plain text ready for Telegram
+- **Kualitas Data**: what was cleaned in the CSV (duplicates, region spellings, a return invoice, ...)
+
+Without API keys the summary is written from a template. To let AI write it, copy `.env.example` to `.env`
+and add a `GEMINI_API_KEY` (or Cloudflare `CF_ACCOUNT_ID` + `CF_API_TOKEN`). Sending to Telegram needs
+`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`; WhatsApp needs the gateway (see *Deploy* below).
+
+Tests: `python -m pytest -q`
+
+---
+
 Streamlit app for the Sep–Oct 2026 sales sample (`data/sales.csv`):
 
 - Net sales by **region** and **brand**, month-over-month change, region × brand heatmap

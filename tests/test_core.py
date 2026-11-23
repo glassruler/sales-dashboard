@@ -64,3 +64,14 @@ def test_recipients_roundtrip(tmp_path, monkeypatch):
     assert notify.active_wa_recipients() == ["6281234567890"]
     with pytest.raises(ValueError):
         notify.save_recipients([{"name": "x", "number": "12", "active": True}])
+
+
+def test_data_path_falls_back_to_root_sales_csv(tmp_path, monkeypatch):
+    from salesapp import report
+    monkeypatch.delenv("DATA_PATH", raising=False)
+    monkeypatch.setattr(report, "ROOT", tmp_path)
+    (tmp_path / "sales.csv").write_text("x")
+    assert report.data_path() == str(tmp_path / "sales.csv")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sales.csv").write_text("x")
+    assert report.data_path() == str(tmp_path / "data" / "sales.csv")

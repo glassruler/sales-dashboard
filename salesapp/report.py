@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -20,8 +21,17 @@ from . import notify
 log = logging.getLogger("report")
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def data_path() -> str:
-    return os.getenv("DATA_PATH", "data/sales.csv")
+    """DATA_PATH from .env, else data/sales.csv, else sales.csv dropped in the project folder."""
+    if os.getenv("DATA_PATH"):
+        return os.getenv("DATA_PATH")
+    for candidate in (ROOT / "data" / "sales.csv", ROOT / "sales.csv"):
+        if candidate.exists():
+            return str(candidate)
+    return str(ROOT / "data" / "sales.csv")
 
 
 def build_message(lang: str | None = None, use_ai: bool = True) -> tuple[str, str]:
